@@ -1,4 +1,4 @@
-# Stock Data SQL Warehouse
+# Asset Price Database
 
 A production-ready data warehouse for centralizing daily OHLCV data from multiple sources (equities, ETFs, cryptocurrencies) with comprehensive ETL pipeline, quality control, and REST API.
 
@@ -41,8 +41,8 @@ Raw Data Sources → Staging → QC/Validation → Raw Tables → Gold Views →
 
 1. **Clone & Setup**
    ```bash
-   git clone <repository-url>
-   cd stock_warehouse
+   git clone https://github.com/NashC/asset-price-database.git
+   cd asset_price_database
    poetry install  # or pip install -r requirements.txt
    ```
 
@@ -55,7 +55,7 @@ Raw Data Sources → Staging → QC/Validation → Raw Tables → Gold Views →
    poetry run alembic upgrade head
    
    # Seed data sources
-   psql -h localhost -U stockuser -d stockdb -f db/seeds/data_source_seed.sql
+   psql -h localhost -U assetuser -d assetpricedb -f db/seeds/data_source_seed.sql
    ```
 
 3. **Environment Configuration**
@@ -68,19 +68,19 @@ Raw Data Sources → Staging → QC/Validation → Raw Tables → Gold Views →
 
 ```bash
 # Load CSV data
-poetry run stock-warehouse load data/sample.csv --symbol AAPL --asset-type STOCK
+poetry run asset-price-db load data/sample.csv --symbol AAPL --asset-type STOCK
 
 # Validate data quality
-poetry run stock-warehouse validate data/sample.csv
+poetry run asset-price-db validate data/sample.csv
 
 # Check warehouse status
-poetry run stock-warehouse status
+poetry run asset-price-db status
 
 # Refresh materialized views
-poetry run stock-warehouse refresh
+poetry run asset-price-db refresh
 
 # List data sources
-poetry run stock-warehouse sources
+poetry run asset-price-db sources
 ```
 
 ## 📊 Data Pipeline
@@ -114,7 +114,7 @@ poetry run stock-warehouse sources
 
 ```bash
 # Load data with full pipeline
-stock-warehouse load path/to/data.csv \
+asset-price-db load path/to/data.csv \
   --symbol AAPL \
   --asset-type STOCK \
   --exchange NASDAQ \
@@ -122,16 +122,19 @@ stock-warehouse load path/to/data.csv \
   --sector Technology
 
 # Dry run validation only
-stock-warehouse load data.csv --dry-run
+asset-price-db load data.csv --dry-run
 
 # Refresh views
-stock-warehouse refresh --concurrent
+asset-price-db refresh --concurrent
 
 # Get warehouse statistics
-stock-warehouse status --view price_gold
+asset-price-db status --view price_gold
 
 # Validate CSV without loading
-stock-warehouse validate data.csv
+asset-price-db validate data.csv
+
+# Short alias also available
+apdb load data/samples/BTC.csv --symbol BTC --asset-type CRYPTO
 ```
 
 ## 🌐 REST API (Phase M4)
@@ -175,14 +178,14 @@ docker-compose logs -f
 
 # Access PGAdmin
 # URL: http://localhost:8080
-# Email: admin@stockwarehouse.com
+# Email: admin@assetpricedb.com
 # Password: admin123
 ```
 
 ## 📁 Project Structure
 
 ```
-stock_warehouse/
+asset_price_database/
 ├── etl/                     # ETL pipeline modules
 │   ├── config.py           # Settings & environment
 │   ├── staging.py          # CSV loading & staging
@@ -237,7 +240,7 @@ Environment variables (`.env` file):
 
 ```bash
 # Database
-DATABASE_URL=postgresql://stockuser:stockpass@localhost:5432/stockdb
+DATABASE_URL=postgresql://assetuser:assetpass@localhost:5432/assetpricedb
 
 # Quality Control
 QC_MIN_SCORE=75.0
