@@ -16,7 +16,7 @@ from datetime import date
 db = StockDB()
 
 # Or with custom connection string
-db = StockDB(dsn="postgresql://user:pass@host:port/db")
+db = StockDB(dsn="postgresql://assetuser:assetpass@localhost:5432/assetpricedb")
 ```
 
 ### Price Data Queries
@@ -198,6 +198,25 @@ curl http://localhost:8000/assets/AAPL
 
 # Price summary
 curl "http://localhost:8000/prices/AAPL/summary?days=30"
+```
+
+## Sample Data Available
+
+The project includes sample data in `data/samples/` for testing:
+- **BTC.csv**: Bitcoin cryptocurrency data
+- **ETH.csv**: Ethereum cryptocurrency data  
+- **ABNB.csv**: Airbnb stock data
+- **ADBE.csv**: Adobe stock data
+- **CRM.csv**: Salesforce stock data
+- **JNJ.csv**: Johnson & Johnson stock data
+
+### Loading Sample Data
+```bash
+# Load Bitcoin data
+asset-price-db load data/samples/BTC.csv --symbol BTC --asset-type CRYPTO
+
+# Load Adobe stock data
+apdb load data/samples/ADBE.csv --symbol ADBE --asset-type STOCK --exchange NASDAQ
 ```
 
 ## Common Query Patterns
