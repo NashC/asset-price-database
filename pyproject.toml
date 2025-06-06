@@ -5,8 +5,8 @@ description = "Asset Price Database - Centralized daily OHLCV data for equities,
 authors = ["NashC"]
 license = "MIT"
 readme = "README.md"
-homepage = "https://github.com/NashC/asset_price_database"
-repository = "https://github.com/NashC/asset_price_database"
+homepage = "https://github.com/NashC/asset-price-database"
+repository = "https://github.com/NashC/asset-price-database"
 keywords = ["stock", "data", "warehouse", "sql", "etl", "finance"]
 classifiers = [
     "Development Status :: 3 - Alpha",
