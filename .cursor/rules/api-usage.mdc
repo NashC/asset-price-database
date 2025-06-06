@@ -1,0 +1,314 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+# API Usage & Query Patterns
+
+## Database Client Usage ([db_client.py](mdc:app/db_client.py))
+
+### Basic Setup
+```python
+from app.db_client import StockDB
+from datetime import date
+
+# Initialize client (uses settings from .env)
+db = StockDB()
+
+# Or with custom connection string
+db = StockDB(dsn="postgresql://user:pass@host:port/db")
+```
+
+### Price Data Queries
+
+#### Get Daily Prices
+```python
+# Single symbol
+prices = db.prices(['AAPL'], 
+                  start=date(2024, 1, 1), 
+                  end=date(2024, 1, 31))
+
+# Multiple symbols
+prices = db.prices(['AAPL', 'MSFT', 'GOOGL'], 
+                  start=date(2024, 1, 1), 
+                  end=date(2024, 1, 31))
+
+# Returns pandas DataFrame with columns:
+# symbol, price_date, open_price, high_price, low_price, 
+# close_price, volume, adj_close_price, asset_type, currency, exchange
+```
+
+#### Query Different Tables
+```python
+# Query raw data (includes duplicates)
+raw_prices = db.prices(['AAPL'], start, end, table='price_raw')
+
+# Query gold dataset (deduplicated, default)
+gold_prices = db.prices(['AAPL'], start, end, table='price_gold')
+
+# Future: Query intraday data
+# intraday = db.prices(['AAPL'], start, end, table='price_raw_intraday')
+```
+
+### Asset Information
+
+#### Get Asset Details
+```python
+# Get comprehensive asset information
+asset_info = db.get_asset_info('AAPL')
+# Returns: {
+#   'asset_id': 1,
+#   'symbol': 'AAPL',
+#   'asset_type': 'STOCK',
+#   'currency': 'USD',
+#   'exchange': 'NASDAQ',
+#   'company_name': 'Apple Inc.',
+#   'sector': 'Technology',
+#   'industry': 'Consumer Electronics',
+#   'market_cap': 3000000000000,
+#   'is_active': True,
+#   'created_at': datetime(...),
+#   'updated_at': datetime(...)
+# }
+```
+
+#### List Available Symbols
+```python
+# All active symbols
+all_symbols = db.get_available_symbols()
+
+# Filter by asset type
+stocks = db.get_available_symbols(asset_type='STOCK')
+etfs = db.get_available_symbols(asset_type='ETF')
+crypto = db.get_available_symbols(asset_type='CRYPTO')
+```
+
+### Data Range & Statistics
+
+#### Get Date Coverage
+```python
+# Overall date range
+date_range = db.get_date_range()
+# Returns: {'min_date': date(2020, 1, 1), 'max_date': date(2024, 1, 31)}
+
+# Date range for specific symbol
+aapl_range = db.get_date_range(symbol='AAPL')
+```
+
+#### Latest Prices
+```python
+# Latest prices for all symbols (limited to 100)
+latest = db.get_latest_prices()
+
+# Latest prices for specific symbols
+latest_tech = db.get_latest_prices(['AAPL', 'MSFT', 'GOOGL'])
+
+# Returns DataFrame with: symbol, price_date, close_price, volume, asset_type, exchange
+```
+
+#### Price Summary Statistics
+```python
+# 30-day summary for AAPL
+summary = db.get_price_summary('AAPL', days=30)
+# Returns: {
+#   'symbol': 'AAPL',
+#   'trading_days': 22,
+#   'min_price': 150.25,
+#   'max_price': 185.50,
+#   'avg_price': 167.85,
+#   'price_volatility': 8.45,
+#   'avg_volume': 45000000,
+#   'start_date': date(2024, 1, 1),
+#   'end_date': date(2024, 1, 31),
+#   'latest_price': 175.25,
+#   'analysis_days': 30
+# }
+```
+
+### Total Return Calculations (Phase M2)
+```python
+# Total return including dividends and splits
+total_return = db.total_return('AAPL', 
+                              start=date(2024, 1, 1), 
+                              end=date(2024, 1, 31))
+# Returns pandas Series with total return price series
+```
+
+### Health Monitoring
+```python
+# Database health check
+health = db.health_check()
+# Returns: {
+#   'status': 'healthy',
+#   'database_connected': True,
+#   'asset_count': 5000,
+#   'price_count': 2500000,
+#   'batch_count': 150,
+#   'latest_date': date(2024, 1, 31),
+#   'timestamp': '2024-01-31T10:30:00'
+# }
+```
+
+## REST API Usage (Phase M4)
+
+### FastAPI Server ([fastapi_server.py](mdc:app/fastapi_server.py))
+
+#### Start Server
+```bash
+# Development
+poetry run uvicorn app.fastapi_server:app --reload
+
+# Production
+poetry run uvicorn app.fastapi_server:app --host 0.0.0.0 --port 8000 --workers 4
+```
+
+#### API Endpoints
+
+##### Health Check
+```bash
+curl http://localhost:8000/health
+```
+
+##### Get Symbols
+```bash
+# All symbols
+curl http://localhost:8000/symbols
+
+# Filter by asset type
+curl "http://localhost:8000/symbols?asset_type=STOCK"
+curl "http://localhost:8000/symbols?asset_type=ETF"
+```
+
+##### Price Data
+```bash
+# Single symbol
+curl "http://localhost:8000/prices?symbols=AAPL&start_date=2024-01-01&end_date=2024-01-31"
+
+# Multiple symbols
+curl "http://localhost:8000/prices?symbols=AAPL,MSFT,GOOGL&start_date=2024-01-01&end_date=2024-01-31"
+
+# Latest prices
+curl "http://localhost:8000/prices/latest?symbols=AAPL,MSFT"
+```
+
+##### Asset Information
+```bash
+# Asset details
+curl http://localhost:8000/assets/AAPL
+
+# Price summary
+curl "http://localhost:8000/prices/AAPL/summary?days=30"
+```
+
+## Common Query Patterns
+
+### Performance Analysis
+```python
+# Get price data for analysis
+prices = db.prices(['AAPL'], start_date, end_date)
+
+# Calculate returns
+prices['daily_return'] = prices.groupby('symbol')['close_price'].pct_change()
+
+# Calculate volatility
+volatility = prices.groupby('symbol')['daily_return'].std() * (252 ** 0.5)
+```
+
+### Multi-Asset Comparison
+```python
+# Get data for multiple assets
+symbols = ['AAPL', 'MSFT', 'GOOGL', 'AMZN']
+prices = db.prices(symbols, start_date, end_date)
+
+# Pivot for easier analysis
+price_matrix = prices.pivot(index='price_date', 
+                           columns='symbol', 
+                           values='close_price')
+
+# Calculate correlation matrix
+correlation = price_matrix.pct_change().corr()
+```
+
+### Data Quality Monitoring
+```python
+# Check data freshness
+health = db.health_check()
+latest_date = health['latest_date']
+
+# Get summary for recent data
+recent_summary = db.get_price_summary('AAPL', days=7)
+
+# Check for missing data
+date_range = db.get_date_range('AAPL')
+expected_days = (date_range['max_date'] - date_range['min_date']).days
+actual_days = recent_summary['trading_days']
+```
+
+### Batch Processing
+```python
+# Process large symbol lists in batches
+all_symbols = db.get_available_symbols()
+batch_size = 50
+
+for i in range(0, len(all_symbols), batch_size):
+    batch_symbols = all_symbols[i:i + batch_size]
+    batch_prices = db.prices(batch_symbols, start_date, end_date)
+    # Process batch_prices...
+```
+
+## Error Handling
+
+### Database Connection Issues
+```python
+try:
+    db = StockDB()
+    health = db.health_check()
+    if health['status'] != 'healthy':
+        print(f"Database unhealthy: {health}")
+except Exception as e:
+    print(f"Database connection failed: {e}")
+```
+
+### Query Validation
+```python
+# The StockDB class includes built-in validation:
+# - Table name validation (prevents SQL injection)
+# - Symbol case normalization (converts to uppercase)
+# - Parameter validation (date ranges, limits)
+
+# Invalid table name raises ValueError
+try:
+    prices = db.prices(['AAPL'], start, end, table='invalid_table')
+except ValueError as e:
+    print(f"Invalid table: {e}")
+```
+
+### Data Availability
+```python
+# Check if symbol exists before querying
+asset_info = db.get_asset_info('UNKNOWN')
+if asset_info is None:
+    print("Symbol not found in warehouse")
+
+# Check date range availability
+date_range = db.get_date_range('AAPL')
+if date_range['min_date'] is None:
+    print("No data available for AAPL")
+```
+
+## Session Management
+
+### Context Manager Usage
+```python
+# For transaction control
+with db.session() as session:
+    # Perform multiple operations
+    # Automatic commit/rollback
+    pass
+```
+
+### Connection Pooling
+The StockDB class uses SQLAlchemy's connection pooling automatically:
+- Connections are reused efficiently
+- Automatic connection recovery
+- Configurable pool size via DATABASE_URL parameters

@@ -1,0 +1,125 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+# ETL Pipeline Guide
+
+## Pipeline Overview
+The ETL pipeline processes raw financial data through four main stages: Staging → Quality Control → Loading → Gold Refresh.
+
+## Core ETL Components
+
+### 1. Configuration ([config.py](mdc:etl/config.py))
+Uses Pydantic Settings for environment-based configuration:
+```python
+from etl.config import get_settings
+settings = get_settings()  # Loads from .env file
+```
+
+Key settings:
+- `DATABASE_URL`: PostgreSQL connection string
+- `QC_MIN_SCORE`: Minimum quality threshold (default: 75.0)
+- `BATCH_SIZE`: Rows per processing batch (default: 10,000)
+- `LOG_LEVEL`: Logging verbosity
+
+### 2. Staging ([staging.py](mdc:etl/staging.py))
+Handles CSV ingestion with flexible column mapping:
+
+**Key Functions:**
+- `copy_to_stage(csv_path)`: Bulk load CSV into `stage_raw_prices` table
+- `_standardize_columns()`: Maps various CSV formats (Yahoo Finance, custom)
+- `_extract_symbol_from_filename()`: Infers symbol from filename patterns
+
+**Supported CSV Formats:**
+- Yahoo Finance: `Date,Open,High,Low,Close,Volume,Adj Close`
+- Custom formats with case-insensitive mapping
+- Automatic symbol extraction from filenames like `AAPL_2024.csv`
+
+### 3. Quality Control ([qc.py](mdc:etl/qc.py))
+Implements comprehensive data validation with 0-100 scoring:
+
+**Quality Metrics (25 points each):**
+- **Completeness**: Missing value analysis for required fields
+- **Validity**: Data format validation (dates, numeric values)
+- **Consistency**: OHLC relationship checks (High ≥ Open/Close, etc.)
+- **Uniqueness**: Duplicate detection on symbol+date combinations
+
+**Key Functions:**
+- `score_quality(df)`: Returns overall quality score
+- `generate_quality_report(df, batch_name)`: Comprehensive analysis
+- `validate_price_ranges(df)`: Detects outliers and anomalies
+
+### 4. Data Loading ([loaders.py](mdc:etl/loaders.py))
+Manages asset creation and price data insertion:
+
+**Key Classes & Functions:**
+- `BatchMeta`: Dataclass for ETL batch metadata
+- `upsert_asset()`: Creates/updates asset records with metadata
+- `insert_price_rows()`: Bulk price insertion with conflict resolution
+- `_insert_price_batch()`: SQL-based batch insertion with ON CONFLICT handling
+
+**Important:** Uses proper SQL with ON CONFLICT instead of pandas to_sql for reliability.
+
+### 5. Gold Refresh ([gold_refresh.py](mdc:etl/gold_refresh.py))
+Manages materialized view refresh for analytics:
+
+**Key Functions:**
+- `refresh_daily_gold(concurrent=True)`: Refreshes `price_gold` view
+- `_has_unique_index()`: Checks if concurrent refresh is possible
+- `get_view_stats()`: Returns view statistics and health metrics
+
+**Safety Features:**
+- Automatic fallback from concurrent to blocking refresh
+- View existence checking before operations
+- Index validation for concurrent operations
+
+## CLI Usage ([cli.py](mdc:etl/cli.py))
+
+### Loading Data
+```bash
+# Basic load
+stock-warehouse load data/AAPL.csv --symbol AAPL --asset-type STOCK
+
+# Full metadata
+stock-warehouse load data/AAPL.csv \
+  --symbol AAPL \
+  --asset-type STOCK \
+  --exchange NASDAQ \
+  --company-name "Apple Inc." \
+  --sector Technology
+
+# Dry run (validation only)
+stock-warehouse load data/AAPL.csv --dry-run
+```
+
+### Other Commands
+```bash
+# Validate CSV without loading
+stock-warehouse validate data/AAPL.csv
+
+# Check warehouse status
+stock-warehouse status --view price_gold
+
+# Refresh materialized views
+stock-warehouse refresh --concurrent
+
+# List data sources
+stock-warehouse sources
+```
+
+## Data Flow Example
+1. **CSV Input**: `AAPL_2024.csv` with Yahoo Finance format
+2. **Staging**: Loaded into `stage_raw_prices` with metadata
+3. **Quality Check**: Scored on completeness, validity, consistency, uniqueness
+4. **Asset Management**: `AAPL` asset created/updated in `asset` table
+5. **Batch Tracking**: Metadata recorded in `batch_meta` table
+6. **Price Loading**: Data inserted into `price_raw` with conflict resolution
+7. **Gold Refresh**: `price_gold` materialized view updated for analytics
+
+## Error Handling
+- Quality scores below threshold reject batches
+- Invalid OHLC relationships are skipped with warnings
+- Duplicate data is handled via ON CONFLICT DO UPDATE
+- Failed batches are marked in `batch_meta` with error messages
+- Automatic fallback mechanisms for materialized view refresh

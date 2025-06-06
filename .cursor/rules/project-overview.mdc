@@ -1,0 +1,56 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+# Stock Data SQL Warehouse - Project Overview
+
+## Architecture & Purpose
+This is a production-ready data warehouse for centralizing daily OHLCV (Open, High, Low, Close, Volume) data from multiple sources including equities, ETFs, and cryptocurrencies. The system provides complete data lineage tracking, quality control, and REST API access.
+
+## Core Data Flow
+```
+Raw Data Sources → Staging → QC/Validation → Raw Tables → Gold Views → API
+     ↓              ↓           ↓              ↓          ↓        ↓
+  CSV/API       stage_*    Quality Score   price_raw  price_gold  REST
+```
+
+## Key Components
+
+### ETL Pipeline ([etl/](mdc:etl))
+- **[config.py](mdc:etl/config.py)**: Pydantic-based settings management with environment variables
+- **[staging.py](mdc:etl/staging.py)**: CSV loading with flexible column mapping and symbol extraction
+- **[qc.py](mdc:etl/qc.py)**: Quality control with 0-100 scoring (completeness, validity, consistency, uniqueness)
+- **[loaders.py](mdc:etl/loaders.py)**: Asset management, batch tracking, and price data insertion with conflict resolution
+- **[gold_refresh.py](mdc:etl/gold_refresh.py)**: Materialized view refresh with concurrent/blocking options
+- **[cli.py](mdc:etl/cli.py)**: Click-based command-line interface for all ETL operations
+
+### Application Layer ([app/](mdc:app))
+- **[db_client.py](mdc:app/db_client.py)**: SQLAlchemy-based database client with helper query methods
+- **[fastapi_server.py](mdc:app/fastapi_server.py)**: REST API server (Phase M4) with Pydantic response models
+- **[utils.py](mdc:app/utils.py)**: Utility functions for validation, calculations, and data processing
+
+### Database Schema ([db/ddl/](mdc:db/ddl))
+- **[001_core.sql](mdc:db/ddl/001_core.sql)**: Core tables (asset, price_raw, batch_meta, data_source) with constraints
+- **[002_corp_actions.sql](mdc:db/ddl/002_corp_actions.sql)**: Corporate actions schema (Phase M2)
+- **[003_intraday.sql](mdc:db/ddl/003_intraday.sql)**: Partitioned intraday tables (Phase M3)
+- **[999_views.sql](mdc:db/ddl/999_views.sql)**: Materialized views including price_gold
+
+### Infrastructure
+- **[docker-compose.yml](mdc:docker-compose.yml)**: PostgreSQL 15 + PGAdmin development environment
+- **[pyproject.toml](mdc:pyproject.toml)**: Poetry configuration with comprehensive dependencies and tooling
+- **[alembic.ini](mdc:alembic.ini)**: Database migration configuration
+
+## Development Phases
+- **M1 (COMPLETED)**: Core daily price loader with ETL pipeline
+- **M2 (PLANNED)**: Corporate actions (dividends, splits)
+- **M3 (PLANNED)**: Intraday data with partitioning
+- **M4 (SCAFFOLDED)**: Complete REST API with authentication
+
+## Key Features
+- Multi-asset support (stocks, ETFs, crypto, indices, bonds, commodities)
+- Complete source lineage tracking
+- Automated quality scoring (0-100 scale)
+- Materialized views for fast analytics
+- Docker-based development environment
+- Comprehensive test suite with testcontainers

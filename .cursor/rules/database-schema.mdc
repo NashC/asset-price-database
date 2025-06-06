@@ -1,0 +1,197 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+# Database Schema Guide
+
+## Schema Overview
+The database uses PostgreSQL 15 with a multi-layered approach: Raw data preservation, quality tracking, and analytics-optimized views.
+
+## Core Tables ([001_core.sql](mdc:db/ddl/001_core.sql))
+
+### Asset Master (`asset`)
+Central registry for all tradeable instruments:
+```sql
+- asset_id (SERIAL PRIMARY KEY)
+- symbol (VARCHAR(20)) -- e.g., 'AAPL', 'BTC-USD'
+- asset_type (asset_type_enum) -- STOCK, ETF, CRYPTO, INDEX, BOND, COMMODITY
+- currency (VARCHAR(3)) -- USD, EUR, etc.
+- exchange (VARCHAR(10)) -- NASDAQ, NYSE, CRYPTO
+- company_name, sector, industry, market_cap
+- is_active (BOOLEAN) -- For soft deletes
+- created_at, updated_at (TIMESTAMP WITH TIME ZONE)
+```
+
+**Key Constraint:** `UNIQUE (symbol, asset_type)` allows same symbol across asset types.
+
+### Data Sources (`data_source`)
+Tracks all data providers and their characteristics:
+```sql
+- source_id (SERIAL PRIMARY KEY)
+- source_name (VARCHAR(50) UNIQUE) -- 'YAHOO_FINANCE', 'ALPHA_VANTAGE'
+- source_type (VARCHAR(20)) -- 'API', 'FILE', 'MANUAL'
+- base_url, api_key_required, rate_limit_per_minute
+- is_active (BOOLEAN)
+```
+
+### Batch Metadata (`batch_meta`)
+Complete ETL lineage tracking:
+```sql
+- batch_id (SERIAL PRIMARY KEY)
+- source_id (FK to data_source)
+- batch_name (VARCHAR(100)) -- Unique identifier for each ETL run
+- file_path, file_size_bytes, row_count
+- start_time, end_time, status -- RUNNING, SUCCESS, FAILED, PARTIAL
+- quality_score (DECIMAL(5,2)) -- 0-100 quality score
+- error_message (TEXT)
+```
+
+### Raw Price Data (`price_raw`)
+Immutable price records with full lineage:
+```sql
+- price_id (BIGSERIAL PRIMARY KEY)
+- asset_id (FK to asset)
+- batch_id (FK to batch_meta)
+- source_id (FK to data_source)
+- price_date (DATE)
+- granularity (granularity_enum) -- DAILY, MIN1, MIN5, etc.
+- open_price, high_price, low_price, close_price (DECIMAL(15,6))
+- volume (BIGINT)
+- adj_close_price (DECIMAL(15,6))
+- created_at (TIMESTAMP WITH TIME ZONE)
+```
+
+**Critical Constraint:** `UNIQUE (asset_id, price_date, source_id, granularity)` enables ON CONFLICT handling.
+
+**OHLC Validation:**
+```sql
+CHECK (high_price >= open_price AND high_price >= close_price AND
+       low_price <= open_price AND low_price <= close_price AND
+       high_price >= low_price AND
+       open_price > 0 AND high_price > 0 AND low_price > 0 AND close_price > 0)
+```
+
+### Quality Control (`data_quality_log`)
+Detailed quality check results:
+```sql
+- log_id (SERIAL PRIMARY KEY)
+- batch_id (FK to batch_meta)
+- check_name (VARCHAR(50)) -- 'completeness', 'validity', etc.
+- check_result (VARCHAR(20)) -- PASS, WARN, FAIL
+- score (DECIMAL(5,2))
+- details (JSONB) -- Flexible metadata storage
+```
+
+### Staging Table (`stage_raw_prices`)
+Temporary storage for CSV processing:
+```sql
+- id (SERIAL PRIMARY KEY)
+- symbol, date_str, open_str, high_str, low_str, close_str, volume_str, adj_close_str
+- source_file (VARCHAR(500))
+- row_number (INTEGER)
+- created_at (TIMESTAMP WITH TIME ZONE)
+```
+
+## Corporate Actions Schema ([002_corp_actions.sql](mdc:db/ddl/002_corp_actions.sql))
+
+### Corporate Actions (`corporate_action`)
+Master table for all corporate events:
+```sql
+- action_id (SERIAL PRIMARY KEY)
+- asset_id (FK to asset)
+- action_type (corp_action_type_enum) -- DIVIDEND_CASH, STOCK_SPLIT, etc.
+- ex_date, record_date, payment_date, announcement_date
+- description (TEXT)
+- source_id, batch_id (lineage tracking)
+```
+
+### Dividend Details (`dividend_cash`)
+```sql
+- dividend_id (SERIAL PRIMARY KEY)
+- action_id (FK to corporate_action)
+- dividend_amount (DECIMAL(10,4))
+- currency (VARCHAR(3))
+- tax_rate (DECIMAL(5,4))
+```
+
+### Stock Split Details (`stock_split`)
+```sql
+- split_id (SERIAL PRIMARY KEY)
+- action_id (FK to corporate_action)
+- split_ratio_from, split_ratio_to (INTEGER) -- e.g., 2:1 split
+```
+
+## Intraday Schema ([003_intraday.sql](mdc:db/ddl/003_intraday.sql))
+
+### Partitioned Intraday Data (`price_raw_intraday`)
+High-frequency data with monthly partitioning:
+```sql
+- price_id (BIGSERIAL)
+- asset_id, batch_id, source_id (FKs)
+- price_datetime (TIMESTAMP WITH TIME ZONE) -- Partition key
+- granularity (MIN1, MIN5, MIN15, MIN30, HOUR1, HOUR4)
+- OHLC fields + volume, trade_count, vwap
+```
+
+**Partitioning Strategy:** Monthly partitions for performance:
+```sql
+PARTITION BY RANGE (price_datetime)
+-- price_raw_intraday_2024_01, price_raw_intraday_2024_02, etc.
+```
+
+## Analytics Views ([999_views.sql](mdc:db/ddl/999_views.sql))
+
+### Gold Dataset (`price_gold`)
+Materialized view with deduplicated, analysis-ready data:
+```sql
+-- Deduplication logic: Latest batch wins for same asset+date
+WITH ranked_prices AS (
+  SELECT *, ROW_NUMBER() OVER (
+    PARTITION BY asset_id, price_date 
+    ORDER BY batch_meta.start_time DESC, created_at DESC
+  ) as rn
+  FROM price_raw pr
+  JOIN asset a ON pr.asset_id = a.asset_id
+  JOIN batch_meta bm ON pr.batch_id = bm.batch_id
+  WHERE a.is_active = true AND bm.status = 'SUCCESS'
+)
+SELECT * FROM ranked_prices WHERE rn = 1
+```
+
+**Performance Indexes:**
+- `UNIQUE (asset_id, price_date)` -- Enables concurrent refresh
+- `(symbol, price_date)`, `(price_date)`, `(symbol)` -- Query optimization
+
+### Supporting Views
+- `price_total_return`: Includes dividend and split adjustments (Phase M2)
+- `asset_summary`: Trading statistics per asset
+- `data_quality_summary`: Quality metrics by source and month
+- `recent_price_changes`: Last 30 days price movements
+
+## Key Design Principles
+
+### 1. Immutable Raw Data
+- Never modify `price_raw` after insertion
+- All changes tracked through new batch records
+- Complete audit trail via `batch_meta`
+
+### 2. Source Lineage
+- Every row traceable to original source
+- Batch-level metadata for debugging
+- Quality scores at batch level
+
+### 3. Conflict Resolution
+- Latest batch wins for duplicate asset+date combinations
+- ON CONFLICT DO UPDATE preserves most recent data
+- Materialized views provide clean, deduplicated access
+
+### 4. Performance Optimization
+- Strategic indexing on common query patterns
+- Materialized views for analytics workloads
+- Partitioning for high-frequency data (intraday)
+
+### 5. Data Quality
+- Database-level constraints prevent invalid OHLC relationships
+- Enum types ensure data consistency
+- JSONB fields for flexible metadata storage

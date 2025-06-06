@@ -1,0 +1,236 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+# Development Setup & Workflows
+
+## Quick Start
+
+### Prerequisites
+- Python 3.11+ (required for modern type hints and performance)
+- PostgreSQL 15+ (or use Docker setup)
+- Poetry (recommended) or pip for dependency management
+
+### Initial Setup
+```bash
+# 1. Install dependencies
+poetry install --with dev
+
+# 2. Start database (Docker)
+docker-compose up -d
+
+# 3. Apply database schema
+poetry run alembic upgrade head
+
+# 4. Seed initial data
+psql -h localhost -U stockuser -d stockdb -f db/seeds/data_source_seed.sql
+
+# 5. Install pre-commit hooks
+poetry run pre-commit install
+```
+
+## Project Configuration
+
+### Environment Setup
+Copy [.env.example](mdc:.env.example) to `.env` and configure:
+```bash
+# Database
+DATABASE_URL=postgresql://stockuser:stockpass@localhost:5432/stockdb
+
+# Quality Control
+QC_MIN_SCORE=75.0
+QC_MAX_NULL_PCT=5.0
+
+# ETL Settings  
+BATCH_SIZE=10000
+MAX_WORKERS=4
+
+# Logging
+LOG_LEVEL=INFO
+LOG_FILE=./logs/etl.log
+```
+
+### Poetry Configuration ([pyproject.toml](mdc:pyproject.toml))
+The project uses Poetry for dependency management with:
+- **Core Dependencies**: SQLAlchemy 2.x, Pydantic v2, FastAPI, pandas, loguru
+- **Dev Dependencies**: pytest, black, isort, mypy, pre-commit
+- **Optional Groups**: monitoring (psutil, prometheus-client)
+
+### Docker Environment ([docker-compose.yml](mdc:docker-compose.yml))
+Provides PostgreSQL 15 + PGAdmin:
+```bash
+# Start services
+docker-compose up -d
+
+# Access PGAdmin: http://localhost:8080
+# Email: admin@stockwarehouse.com
+# Password: admin123
+```
+
+## Development Workflows
+
+### Code Quality ([.pre-commit-config.yaml](mdc:.pre-commit-config.yaml))
+Automated checks on every commit:
+```bash
+# Manual run
+poetry run pre-commit run --all-files
+
+# Individual tools
+poetry run black .           # Code formatting
+poetry run isort .           # Import sorting  
+poetry run flake8 etl/ app/  # Linting
+poetry run mypy etl/ app/    # Type checking
+```
+
+### Testing ([tests/](mdc:tests))
+Comprehensive test suite with testcontainers:
+
+```bash
+# Run all tests
+poetry run pytest
+
+# Run with coverage
+poetry run pytest --cov=etl --cov=app --cov-report=html
+
+# Run specific test categories
+poetry run pytest -m unit        # Unit tests only
+poetry run pytest -m integration # Integration tests only
+poetry run pytest -m slow        # Long-running tests
+
+# Run specific test files
+poetry run pytest tests/test_qc.py -v
+```
+
+### Test Configuration ([conftest.py](mdc:tests/conftest.py))
+Uses testcontainers for isolated PostgreSQL instances:
+- Automatic schema setup and teardown
+- Comprehensive fixtures for test data
+- Parallel test execution support
+
+## Common Development Tasks
+
+### Adding New Data Sources
+1. **Database**: Add entry to `data_source` table
+2. **ETL**: Extend [staging.py](mdc:etl/staging.py) column mapping if needed
+3. **Tests**: Add test cases for new format
+
+### Extending Asset Types
+1. **Schema**: Update `asset_type_enum` in [001_core.sql](mdc:db/ddl/001_core.sql)
+2. **CLI**: Update choices in [cli.py](mdc:etl/cli.py)
+3. **Validation**: Add type-specific validation in [qc.py](mdc:etl/qc.py)
+
+### Adding Quality Checks
+1. **Implementation**: Add check function to [qc.py](mdc:etl/qc.py)
+2. **Integration**: Update `score_quality()` to include new check
+3. **Testing**: Add test cases in [test_qc.py](mdc:tests/test_qc.py)
+
+### Database Migrations
+```bash
+# Create new migration
+poetry run alembic revision --autogenerate -m "Description"
+
+# Apply migrations
+poetry run alembic upgrade head
+
+# Rollback
+poetry run alembic downgrade -1
+```
+
+## API Development (Phase M4)
+
+### FastAPI Server ([fastapi_server.py](mdc:app/fastapi_server.py))
+```bash
+# Start development server
+poetry run uvicorn app.fastapi_server:app --reload
+
+# Access API docs: http://localhost:8000/docs
+```
+
+### Database Client ([db_client.py](mdc:app/db_client.py))
+The `StockDB` class provides high-level database operations:
+```python
+from app.db_client import StockDB
+
+db = StockDB()
+# Get price data
+prices = db.prices(['AAPL', 'MSFT'], start_date, end_date)
+
+# Get asset info
+asset_info = db.get_asset_info('AAPL')
+
+# Health check
+health = db.health_check()
+```
+
+## Debugging & Troubleshooting
+
+### Logging
+- **Console**: Structured logging with loguru
+- **File**: Configurable via `LOG_FILE` environment variable
+- **Levels**: DEBUG, INFO, WARNING, ERROR
+
+### Common Issues
+
+#### Database Connection
+```bash
+# Test connection
+poetry run python -c "from etl.config import get_settings; print(get_settings().database_url)"
+
+# Check Docker services
+docker-compose ps
+docker-compose logs postgres
+```
+
+#### Quality Score Issues
+```bash
+# Validate CSV without loading
+poetry run stock-warehouse validate data/sample.csv
+
+# Check quality thresholds in .env
+QC_MIN_SCORE=75.0
+```
+
+#### Materialized View Refresh
+```bash
+# Manual refresh
+poetry run stock-warehouse refresh
+
+# Check view status
+poetry run stock-warehouse status --view price_gold
+```
+
+## Performance Optimization
+
+### Database Tuning
+- Monitor query performance with `EXPLAIN ANALYZE`
+- Use materialized views for analytics workloads
+- Consider partitioning for large datasets (intraday)
+
+### ETL Performance
+- Adjust `BATCH_SIZE` for optimal throughput
+- Use `MAX_WORKERS` for parallel processing
+- Monitor memory usage with large CSV files
+
+### Monitoring (Optional)
+Enable monitoring dependencies:
+```bash
+poetry install --extras monitoring
+```
+
+Provides psutil and prometheus-client for system metrics.
+
+## Contributing Guidelines
+
+### Pull Request Process
+1. Create feature branch from `main`
+2. Implement changes with tests
+3. Run full test suite and quality checks
+4. Update documentation if needed
+5. Submit PR with clear description
+
+### Code Standards
+- **Python**: Follow PEP 8 with 100-character line limit
+- **SQL**: Use uppercase keywords, consistent formatting
+- **Documentation**: Update relevant `.mdc` rules for significant changes
+- **Testing**: Maintain >90% test coverage for new code
