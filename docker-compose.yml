@@ -13,11 +13,10 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./db/ddl:/docker-entrypoint-initdb.d
+      - ./db/conf/pg_hba.conf:/var/lib/postgresql/data/pg_hba.conf
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U assetuser -d assetpricedb"]
       interval: 10s
-      timeout: 5s
-      retries: 5
 
   pgadmin:
     image: dpage/pgadmin4:latest
@@ -26,6 +25,7 @@ services:
       PGADMIN_DEFAULT_EMAIL: admin@assetpricedb.com
       PGADMIN_DEFAULT_PASSWORD: admin123
       PGADMIN_CONFIG_SERVER_MODE: 'False'
+      PGADMIN_CONFIG_MASTER_PASSWORD_REQUIRED: 'False'
     ports:
       - "8080:80"
     volumes:

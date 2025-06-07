@@ -85,89 +85,80 @@ def copy_to_stage(csv_path: Path, table: str = "stage_raw_prices") -> int:
 
 def _standardize_columns(df: pd.DataFrame, csv_path: Path) -> pd.DataFrame:
     """
-    Standardize column names to match staging table schema.
-    
+    Standardize column names to match the staging table schema.
+    This function is designed to be robust against various CSV formats
+    by using a comprehensive mapping of possible column names. It creates a
+    clean DataFrame with only the columns needed for the staging table.
+
     Args:
-        df: Input DataFrame
-        csv_path: Path to original CSV file (for symbol inference)
-        
+        df: Input DataFrame from the CSV file. It is expected to contain
+            'source_file' and 'row_number' columns already.
+        csv_path: Path to the original CSV file, used for symbol inference.
+
     Returns:
-        pd.DataFrame: DataFrame with standardized columns
+        A DataFrame with standardized and ordered columns ready for staging.
     """
-    # Multiple possible column name mappings
-    column_mappings = [
-        # Standard Yahoo Finance format
-        {
-            'Date': 'date_str',
-            'Open': 'open_str', 
-            'High': 'high_str',
-            'Low': 'low_str',
-            'Close': 'close_str',
-            'Volume': 'volume_str',
-            'Adj Close': 'adj_close_str',
-            'Symbol': 'symbol'
-        },
-        # Alternative formats
-        {
-            'date': 'date_str',
-            'open': 'open_str',
-            'high': 'high_str', 
-            'low': 'low_str',
-            'close': 'close_str',
-            'volume': 'volume_str',
-            'adj_close': 'adj_close_str',
-            'adjclose': 'adj_close_str',
-            'symbol': 'symbol',
-            'ticker': 'symbol'
-        },
-        # Case-insensitive mapping
-        {
-            'DATE': 'date_str',
-            'OPEN': 'open_str',
-            'HIGH': 'high_str',
-            'LOW': 'low_str', 
-            'CLOSE': 'close_str',
-            'VOLUME': 'volume_str',
-            'ADJ_CLOSE': 'adj_close_str',
-            'SYMBOL': 'symbol',
-            'TICKER': 'symbol'
-        }
-    ]
-    
-    # Try each mapping
-    df_mapped = df.copy()
-    columns_found = set()
-    
-    for mapping in column_mappings:
-        for old_col, new_col in mapping.items():
-            if old_col in df_mapped.columns and new_col not in df_mapped.columns:
-                df_mapped = df_mapped.rename(columns={old_col: new_col})
-                columns_found.add(new_col)
-                logger.debug(f"Mapped column '{old_col}' -> '{new_col}'")
-    
-    # Ensure required columns exist
-    required_cols = ['symbol', 'date_str', 'open_str', 'high_str', 
-                    'low_str', 'close_str']
-    
+    # Normalize column names of the input DataFrame
+    df.columns = [str(col).strip().lower() for col in df.columns]
+    logger.debug(f"Normalized input columns: {df.columns.tolist()}")
+
+    # A comprehensive map of target column names to possible source column names.
+    column_map: Dict[str, List[str]] = {
+        "date_str": ["date", "time", "timestamp", "trade_date"],
+        "open_str": ["open"],
+        "high_str": ["high"],
+        "low_str": ["low"],
+        "close_str": ["close", "price"],
+        "adj_close_str": ["adj close", "adjclose", "adjusted close"],
+        "volume_str": ["volume", "vol"],
+        "symbol": ["symbol", "ticker"],
+    }
+
+    staged_df = pd.DataFrame()
+
+    # Map source columns to standard staging column names
+    for standard_col, possible_names in column_map.items():
+        for name in possible_names:
+            if name in df.columns:
+                staged_df[standard_col] = df[name]
+                logger.debug(f"Mapped source column '{name}' to '{standard_col}'")
+                break
+
+    # Ensure required columns exist, filling with None if necessary.
+    required_cols = ["date_str", "open_str", "high_str", "low_str", "close_str"]
     for col in required_cols:
-        if col not in df_mapped.columns:
-            if col == 'symbol':
-                # Try to extract symbol from filename
-                symbol = _extract_symbol_from_filename(csv_path)
-                df_mapped['symbol'] = symbol
-                logger.info(f"Inferred symbol '{symbol}' from filename")
-            else:
-                df_mapped[col] = None
-                logger.warning(f"Missing column '{col}', filled with NULL")
-    
-    # Optional columns with defaults
-    optional_cols = ['volume_str', 'adj_close_str']
+        if col not in staged_df.columns:
+            staged_df[col] = None
+            logger.warning(
+                f"Missing required column '{col}'. It will be filled with NULLs."
+            )
+
+    # Handle symbol separately to allow inference from filename
+    if "symbol" not in staged_df.columns:
+        staged_df["symbol"] = _extract_symbol_from_filename(csv_path)
+        logger.info(f"Inferred symbol from filename for column 'symbol'")
+
+    # Ensure optional columns exist, filling with None if not found
+    optional_cols = ["volume_str", "adj_close_str"]
     for col in optional_cols:
-        if col not in df_mapped.columns:
-            df_mapped[col] = None
-            logger.debug(f"Optional column '{col}' not found, filled with NULL")
+        if col not in staged_df.columns:
+            staged_df[col] = None
+
+    # Preserve essential metadata columns that were added before this function
+    staged_df['source_file'] = df['source_file']
+    staged_df['row_number'] = df['row_number']
+
+    # Define the exact column order for the staging table
+    final_columns_order = [
+        'symbol', 'date_str', 'open_str', 'high_str', 'low_str',
+        'close_str', 'volume_str', 'adj_close_str', 'source_file', 'row_number'
+    ]
+
+    # Reindex the DataFrame to ensure it has only the required columns in the correct order
+    staged_df = staged_df.reindex(columns=final_columns_order)
     
-    return df_mapped
+    logger.debug(f"Final staged columns: {staged_df.columns.tolist()}")
+    return staged_df
 
 
 def _extract_symbol_from_filename(csv_path: Path) -> str:

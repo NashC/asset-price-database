@@ -247,6 +247,7 @@ log/
 # Raw price data - too large for git
 data/stock_and_crypto_data/
 data/kaggle_stock_market_data/
+data/stock_data_20250606/
 
 # Keep sample data for testing
 !data/samples/

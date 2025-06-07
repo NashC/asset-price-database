@@ -63,7 +63,7 @@ def main(verbose: bool) -> None:
 @main.command()
 @click.argument('csv_path', type=click.Path(exists=True, path_type=Path))
 @click.option('--source', '-s', default='MANUAL_CSV', 
-              help='Data source name (default: MANUAL_CSV)')
+              help='Data source name (default: MANUAL_CSV, options: YAHOO_FINANCE_API, YAHOO_CSV_DOWNLOAD, MANUAL_CSV)')
 @click.option('--symbol', help='Override symbol (if not in CSV)')
 @click.option('--asset-type', default='STOCK', 
               type=click.Choice(['STOCK', 'ETF', 'CRYPTO', 'INDEX']),
