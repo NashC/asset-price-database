@@ -81,6 +81,12 @@ all_symbols = db.get_available_symbols()
 stocks = db.get_available_symbols(asset_type='STOCK')
 etfs = db.get_available_symbols(asset_type='ETF')
 crypto = db.get_available_symbols(asset_type='CRYPTO')
+
+# Filter by exchange (99.9% of stocks now have exchange info)
+nasdaq_stocks = db.get_available_symbols(asset_type='STOCK', exchange='NASDAQ')
+nyse_stocks = db.get_available_symbols(asset_type='STOCK', exchange='NYSE')
+amex_stocks = db.get_available_symbols(asset_type='STOCK', exchange='AMEX')
+tsx_stocks = db.get_available_symbols(asset_type='STOCK', exchange='TSX')
 ```
 
 ### Data Range & Statistics
@@ -177,6 +183,12 @@ curl http://localhost:8000/symbols
 # Filter by asset type
 curl "http://localhost:8000/symbols?asset_type=STOCK"
 curl "http://localhost:8000/symbols?asset_type=ETF"
+
+# Filter by exchange (available for 99.9% of stocks)
+curl "http://localhost:8000/symbols?asset_type=STOCK&exchange=NASDAQ"
+curl "http://localhost:8000/symbols?asset_type=STOCK&exchange=NYSE"
+curl "http://localhost:8000/symbols?asset_type=STOCK&exchange=AMEX"
+curl "http://localhost:8000/symbols?asset_type=STOCK&exchange=TSX"
 ```
 
 ##### Price Data
@@ -198,6 +210,28 @@ curl http://localhost:8000/assets/AAPL
 
 # Price summary
 curl "http://localhost:8000/prices/AAPL/summary?days=30"
+```
+
+## Current Database Statistics (Updated June 2025)
+
+### Asset Coverage
+- **Total Stock Symbols**: 10,920 (with 99.9% exchange coverage)
+- **Exchange Distribution**:
+  - NASDAQ: 4,540 symbols (41.6%)
+  - AMEX: 3,586 symbols (32.8%)
+  - NYSE: 2,422 symbols (22.2%)
+  - TSX: 371 symbols (3.4%)
+- **Data Sources**: Yahoo Finance CSV bulk load (8,408 successful files)
+- **Quality Score**: High-quality data with comprehensive validation
+
+### Exchange-Based Queries
+```python
+# Query by exchange
+nasdaq_symbols = db.get_available_symbols(asset_type='STOCK', exchange='NASDAQ')
+nyse_symbols = db.get_available_symbols(asset_type='STOCK', exchange='NYSE')
+
+# Get exchange-specific price data
+nasdaq_prices = db.prices(nasdaq_symbols[:10], start_date, end_date)
 ```
 
 ## Sample Data Available

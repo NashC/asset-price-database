@@ -1,17 +1,24 @@
 # Asset Price Database
 
-A production-ready data warehouse for centralizing daily OHLCV data from multiple sources (equities, ETFs, cryptocurrencies) with comprehensive ETL pipeline, quality control, and REST API.
+A production-ready data warehouse for centralizing daily OHLCV (Open, High, Low, Close, Volume) data from multiple sources including equities, ETFs, and cryptocurrencies. The system provides complete data lineage tracking, quality control, and REST API access.
 
-## 🎯 Features
+## 🎯 Current Status: Production Ready
 
-- **Multi-Asset Support**: Stocks, ETFs, cryptocurrencies, indices, bonds, commodities
-- **Source Lineage**: Complete data provenance tracking across providers
-- **Quality Control**: Automated validation with 0-100 scoring system
-- **ETL Pipeline**: Staging → Validation → Loading → Gold refresh
-- **REST API**: FastAPI-based endpoints for data access (Phase M4)
-- **Materialized Views**: Fast query performance with `price_gold` aggregations
-- **CLI Interface**: Production-ready command-line tools
-- **Docker Support**: Containerized PostgreSQL + PGAdmin stack
+✅ **10,920+ Stock Symbols** loaded from Yahoo Finance  
+✅ **99.9% Exchange Coverage** (NYSE, NASDAQ, AMEX, TSX)  
+✅ **8,408 CSV Files** successfully processed  
+✅ **Production-Grade ETL** with quality scoring and validation  
+✅ **Complete Data Lineage** tracking and audit trails  
+
+## 📊 Database Statistics
+
+| Exchange | Symbols | Percentage |
+|----------|---------|------------|
+| NASDAQ   | 4,540   | 41.6%      |
+| AMEX     | 3,586   | 32.8%      |
+| NYSE     | 2,422   | 22.2%      |
+| TSX      | 371     | 3.4%       |
+| **Total** | **10,919** | **99.9%** |
 
 ## 🏗️ Architecture
 
@@ -21,319 +28,192 @@ Raw Data Sources → Staging → QC/Validation → Raw Tables → Gold Views →
   CSV/API       stage_*    Quality Score   price_raw  price_gold  REST
 ```
 
-### Database Schema
-
-- **Core Tables**: `asset`, `price_raw`, `batch_meta`, `data_source`
-- **Quality Control**: `data_quality_log` with automated scoring
-- **Corporate Actions**: `corporate_action`, `dividend_cash`, `stock_split` (Phase M2)
-- **Intraday Support**: Partitioned `price_raw_intraday` (Phase M3)
-- **Gold Views**: Materialized `price_gold` for analytics
-
 ## 🚀 Quick Start
 
 ### Prerequisites
-
 - Python 3.11+
-- PostgreSQL 15+ (or use included Docker setup)
-- Poetry (recommended) or pip
+- Docker & Docker Compose
+- PostgreSQL 15+ (or use Docker setup)
 
-### Installation
-
-1. **Clone & Setup**
-   ```bash
-   git clone https://github.com/NashC/asset-price-database.git
-   cd asset_price_database
-   poetry install  # or pip install -r requirements.txt
-   ```
-
-2. **Database Setup**
-   ```bash
-   # Start PostgreSQL + PGAdmin
-   docker-compose up -d
-   
-   # Apply schema
-   poetry run alembic upgrade head
-   
-   # Seed data sources
-   psql -h localhost -U assetuser -d assetpricedb -f db/seeds/data_source_seed.sql
-   ```
-
-3. **Environment Configuration**
-   ```bash
-   cp .env.example .env
-   # Edit .env with your settings
-   ```
-
-### Basic Usage
-
+### Setup
 ```bash
-# Load CSV data
-poetry run asset-price-db load data/sample.csv --symbol AAPL --asset-type STOCK
+# Clone repository
+git clone https://github.com/NashC/asset-price-database.git
+cd asset-price-database
 
-# Validate data quality
-poetry run asset-price-db validate data/sample.csv
+# Create virtual environment
+uv venv --python 3.11
+source .venv/bin/activate
 
-# Check warehouse status
-poetry run asset-price-db status
+# Install dependencies
+uv pip install -e .
 
-# Refresh materialized views
-poetry run asset-price-db refresh
-
-# List data sources
-poetry run asset-price-db sources
-```
-
-## 📊 Data Pipeline
-
-### 1. Staging (`etl/staging.py`)
-- Bulk CSV loading with flexible column mapping
-- Automatic symbol extraction from filenames
-- Support for multiple date formats
-- Metadata tracking (file path, row numbers)
-
-### 2. Quality Control (`etl/qc.py`)
-- **Completeness**: Missing value analysis
-- **Validity**: Data format validation
-- **Consistency**: OHLC relationship checks
-- **Uniqueness**: Duplicate detection
-- **Overall Score**: 0-100 weighted scoring
-
-### 3. Loading (`etl/loaders.py`)
-- Asset upsert with metadata enrichment
-- Batch lineage tracking
-- Price data insertion with conflict resolution
-- Transaction management and rollback
-
-### 4. Gold Refresh (`etl/gold_refresh.py`)
-- Materialized view refresh (concurrent/blocking)
-- Freshness validation
-- Index optimization
-- Automated scheduling (future)
-
-## 🔧 CLI Commands
-
-```bash
-# Load data with full pipeline
-asset-price-db load path/to/data.csv \
-  --symbol AAPL \
-  --asset-type STOCK \
-  --exchange NASDAQ \
-  --company-name "Apple Inc." \
-  --sector Technology
-
-# Dry run validation only
-asset-price-db load data.csv --dry-run
-
-# Refresh views
-asset-price-db refresh --concurrent
-
-# Get warehouse statistics
-asset-price-db status --view price_gold
-
-# Validate CSV without loading
-asset-price-db validate data.csv
-
-# Short alias also available
-apdb load data/samples/BTC.csv --symbol BTC --asset-type CRYPTO
-```
-
-## 🌐 REST API (Phase M4)
-
-Start the API server:
-```bash
-poetry run uvicorn app.fastapi_server:app --reload
-```
-
-### Example Endpoints
-
-```bash
-# Health check
-curl http://localhost:8000/health
-
-# Get available symbols
-curl http://localhost:8000/symbols?asset_type=STOCK
-
-# Fetch price data
-curl "http://localhost:8000/prices?symbols=AAPL,MSFT&start_date=2024-01-01&end_date=2024-01-31"
-
-# Asset information
-curl http://localhost:8000/assets/AAPL
-
-# Price summary statistics
-curl http://localhost:8000/prices/AAPL/summary?days=30
-```
-
-## 🐳 Docker Setup
-
-The included `docker-compose.yml` provides:
-- **PostgreSQL 15**: Main database with health checks
-- **PGAdmin**: Web interface at `http://localhost:8080`
-
-```bash
-# Start services
+# Start database
 docker-compose up -d
 
-# View logs
-docker-compose logs -f
+# Apply schema
+alembic upgrade head
 
-# Access PGAdmin
-# URL: http://localhost:8080
-# Email: admin@assetpricedb.com
-# Password: admin123
+# Seed initial data
+psql -h localhost -U assetuser -d assetpricedb -f db/seeds/data_source_seed.sql
+```
+
+## 💾 Data Loading
+
+### Load Individual CSV Files
+```bash
+# Load stock data
+asset-price-db load data/samples/AAPL.csv --symbol AAPL --asset-type STOCK --exchange NASDAQ
+
+# Load crypto data
+asset-price-db load data/samples/BTC.csv --symbol BTC --asset-type CRYPTO
+
+# Validate before loading
+asset-price-db validate data/samples/AAPL.csv
+```
+
+### Bulk Loading (Production)
+```bash
+# Load entire directory of Yahoo Finance CSV files
+python bulk_load_yahoo_data_optimized.py
+
+# Monitor progress and quality scores
+asset-price-db status --view price_gold
+```
+
+## 🔍 Querying Data
+
+### Python API
+```python
+from app.db_client import StockDB
+from datetime import date
+
+# Initialize client
+db = StockDB()
+
+# Get price data
+prices = db.prices(['AAPL', 'MSFT'], 
+                  start=date(2024, 1, 1), 
+                  end=date(2024, 1, 31))
+
+# Filter by exchange
+nasdaq_stocks = db.get_available_symbols(asset_type='STOCK', exchange='NASDAQ')
+
+# Get asset information
+asset_info = db.get_asset_info('AAPL')
+```
+
+### REST API
+```bash
+# Start API server
+uvicorn app.fastapi_server:app --reload
+
+# Query endpoints
+curl "http://localhost:8000/symbols?asset_type=STOCK&exchange=NASDAQ"
+curl "http://localhost:8000/prices?symbols=AAPL&start_date=2024-01-01&end_date=2024-01-31"
+curl "http://localhost:8000/assets/AAPL"
+```
+
+### Direct SQL
+```sql
+-- Get latest prices by exchange
+SELECT symbol, price_date, close_price, exchange
+FROM price_gold 
+WHERE exchange = 'NASDAQ' 
+ORDER BY price_date DESC 
+LIMIT 10;
+
+-- Exchange distribution
+SELECT exchange, COUNT(*) as symbol_count
+FROM asset 
+WHERE asset_type = 'STOCK' 
+GROUP BY exchange 
+ORDER BY symbol_count DESC;
 ```
 
 ## 📁 Project Structure
 
 ```
 asset_price_database/
-├── etl/                     # ETL pipeline modules
-│   ├── config.py           # Settings & environment
-│   ├── staging.py          # CSV loading & staging
-│   ├── qc.py               # Quality control & scoring
-│   ├── loaders.py          # Data insertion & batch management
-│   ├── gold_refresh.py     # Materialized view refresh
-│   └── cli.py              # Command-line interface
-├── app/                     # Application layer
-│   ├── db_client.py        # Database client with helper queries
-│   ├── fastapi_server.py   # REST API server (Phase M4)
-│   └── utils.py            # Utility functions
-├── db/                      # Database schema & seeds
-│   ├── ddl/                # Data definition language
-│   │   ├── 001_core.sql    # Core tables & constraints
-│   │   ├── 002_corp_actions.sql  # Corporate actions (M2)
-│   │   ├── 003_intraday.sql      # Intraday tables (M3)
-│   │   └── 999_views.sql   # Materialized views
-│   └── seeds/              # Initial data
-├── tests/                   # Test suite
-│   ├── conftest.py         # Pytest configuration
-│   ├── test_qc.py          # Quality control tests
-│   └── test_loaders.py     # Data loading tests
-├── docs/                    # Documentation
-└── docker-compose.yml      # Container orchestration
+├── app/                    # Application layer
+│   ├── db_client.py       # Database client with query methods
+│   ├── fastapi_server.py  # REST API server
+│   └── utils.py           # Utility functions
+├── etl/                   # ETL pipeline
+│   ├── cli.py            # Command-line interface
+│   ├── staging.py        # CSV loading and staging
+│   ├── qc.py             # Quality control and validation
+│   ├── loaders.py        # Data loading and asset management
+│   └── gold_refresh.py   # Materialized view management
+├── db/                   # Database schema and seeds
+│   ├── ddl/              # DDL scripts (tables, views, indexes)
+│   └── seeds/            # Initial data and configuration
+├── data/                 # Data files
+│   ├── samples/          # Sample CSV files for testing
+│   └── symbol_exchanges/ # Exchange symbol mappings
+└── tests/                # Comprehensive test suite
 ```
+
+## 🛠️ Key Features
+
+- **Multi-Asset Support**: Stocks, ETFs, crypto, indices, bonds, commodities
+- **Complete Data Lineage**: Full audit trail for all data sources
+- **Quality Control**: 0-100 scoring with comprehensive validation
+- **Exchange Metadata**: 99.9% coverage for stock symbols
+- **Materialized Views**: Fast analytics with deduplicated datasets
+- **Bulk Loading**: Optimized for processing thousands of CSV files
+- **Production ETL**: Batch processing, error handling, and recovery
+- **REST API**: FastAPI with Pydantic models and OpenAPI docs
+- **Docker Environment**: PostgreSQL 15 + PGAdmin for development
+
+## 📈 Development Phases
+
+- **✅ M1**: Core daily price loader with ETL pipeline
+- **🔄 M2**: Corporate actions (dividends, splits)
+- **🔄 M3**: Intraday data with partitioning
+- **🔄 M4**: Complete REST API with authentication
 
 ## 🧪 Testing
 
 ```bash
 # Run all tests
-poetry run pytest
+pytest
 
 # Run with coverage
-poetry run pytest --cov=etl --cov=app --cov-report=html
+pytest --cov=etl --cov=app --cov-report=html
 
 # Run specific test categories
-poetry run pytest -m unit
-poetry run pytest -m integration
-
-# Run tests in verbose mode
-poetry run pytest -v
+pytest -m unit        # Unit tests only
+pytest -m integration # Integration tests only
 ```
 
-### Test Environment
-- Uses `testcontainers` for isolated PostgreSQL instances
-- Automatic schema setup and teardown
-- Comprehensive fixtures for test data
-
-## ⚙️ Configuration
-
-Environment variables (`.env` file):
+## 📊 Monitoring & Health
 
 ```bash
-# Database
-DATABASE_URL=postgresql://assetuser:assetpass@localhost:5432/assetpricedb
+# Check warehouse status
+asset-price-db status
 
-# Quality Control
-QC_MIN_SCORE=75.0
-QC_MAX_NULL_PCT=5.0
-QC_MAX_DUPLICATE_PCT=1.0
+# Refresh materialized views
+asset-price-db refresh --concurrent
 
-# ETL Settings
-BATCH_SIZE=10000
-MAX_WORKERS=4
-
-# Logging
-LOG_LEVEL=INFO
-LOG_FILE=./logs/etl.log
-
-# API Settings (Phase M4)
-API_HOST=0.0.0.0
-API_PORT=8000
-API_WORKERS=1
-
-# External APIs (Future)
-ALPHA_VANTAGE_API_KEY=your_key_here
-POLYGON_API_KEY=your_key_here
+# Health check
+curl http://localhost:8000/health
 ```
-
-## 📈 Roadmap
-
-### ✅ Phase M1: Core Loader (COMPLETED)
-- [x] Daily bars in `price_gold`
-- [x] Complete ETL pipeline
-- [x] Quality control system
-- [x] CLI interface
-- [x] Docker setup
-
-### 🔄 Phase M2: Corporate Actions (IN PROGRESS)
-- [ ] Dividend tracking
-- [ ] Stock splits handling
-- [ ] Total return calculations
-- [ ] Adjusted price history
-
-### 📊 Phase M3: Intraday Data (PLANNED)
-- [ ] 1-minute bars support
-- [ ] Partitioned storage strategy
-- [ ] Real-time ingestion
-- [ ] Market hours validation
-
-### 🌐 Phase M4: API v1 (SCAFFOLDED)
-- [ ] Complete REST endpoints
-- [ ] Authentication & rate limiting
-- [ ] WebSocket streaming
-- [ ] API documentation
 
 ## 🤝 Contributing
 
 1. Fork the repository
-2. Create a feature branch: `git checkout -b feature/amazing-feature`
-3. Commit changes: `git commit -m 'Add amazing feature'`
-4. Push to branch: `git push origin feature/amazing-feature`
-5. Open a Pull Request
-
-### Development Setup
-
-```bash
-# Install with development dependencies
-poetry install --with dev
-
-# Install pre-commit hooks
-poetry run pre-commit install
-
-# Run code formatting
-poetry run black .
-poetry run isort .
-
-# Run type checking
-poetry run mypy etl/ app/
-
-# Run linting
-poetry run flake8 etl/ app/
-```
+2. Create a feature branch
+3. Make changes with tests
+4. Run quality checks: `pre-commit run --all-files`
+5. Submit a pull request
 
 ## 📄 License
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
-## 🆘 Support
+## 🔗 Links
 
-- **Documentation**: [docs/PLANNING.md](docs/PLANNING.md)
-- **Issues**: GitHub Issues
-- **Discussions**: GitHub Discussions
-
-## 🏆 Acknowledgments
-
-- Built with modern Python 3.11+ features
-- PostgreSQL 15 for robust data storage
-- SQLAlchemy 2.x for modern ORM capabilities
-- FastAPI for high-performance API endpoints
-- Pydantic v2 for data validation 
+- **Repository**: https://github.com/NashC/asset-price-database
+- **Documentation**: See `.cursor/rules/` for comprehensive guides
+- **API Docs**: http://localhost:8000/docs (when server is running) 
